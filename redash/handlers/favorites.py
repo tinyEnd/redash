@@ -2,6 +2,7 @@ from flask import request
 from redash import models
 from redash.permissions import require_access, view_only
 from redash.handlers.base import BaseResource, get_object_or_404, filter_by_tags, paginate
+from redash.handlers.queries import order_results
 from redash.serializers import QuerySerializer, serialize_dashboard
 
 from sqlalchemy.exc import IntegrityError
@@ -19,9 +20,19 @@ class QueryFavoriteListResource(BaseResource):
 
         favorites = filter_by_tags(favorites, models.Query.tags)
 
+        # order results according to passed order parameter
+        ordered_favorites = order_results(favorites)
+
         page = request.args.get('page', 1, type=int)
         page_size = request.args.get('page_size', 25, type=int)
-        response = paginate(favorites, page, page_size, QuerySerializer, with_stats=True, with_last_modified_by=False)
+        response = paginate(
+            ordered_favorites,
+            page,
+            page_size,
+            QuerySerializer,
+            with_stats=True,
+            with_last_modified_by=False,
+        )
 
         self.record_event({
             'action': 'load_favorites',
@@ -35,7 +46,7 @@ class QueryFavoriteListResource(BaseResource):
 
         return response
 
-    
+
 class QueryFavoriteResource(BaseResource):
     def post(self, query_id):
         query = get_object_or_404(models.Query.get_by_id_and_org, query_id, self.current_org)
@@ -58,7 +69,7 @@ class QueryFavoriteResource(BaseResource):
             'object_id': query.id,
             'object_type': 'query'
         })
-    
+
     def delete(self, query_id):
         query = get_object_or_404(models.Query.get_by_id_and_org, query_id, self.current_org)
         require_access(query.groups, self.current_user, view_only)
@@ -101,7 +112,7 @@ class DashboardFavoriteListResource(BaseResource):
 
         return response
 
-    
+
 class DashboardFavoriteResource(BaseResource):
     def post(self, object_id):
         dashboard = get_object_or_404(models.Dashboard.get_by_slug_and_org, object_id, self.current_org)
@@ -121,7 +132,7 @@ class DashboardFavoriteResource(BaseResource):
             'object_id': dashboard.id,
             'object_type': 'dashboard'
         })
-    
+
     def delete(self, object_id):
         dashboard = get_object_or_404(models.Dashboard.get_by_slug_and_org, object_id, self.current_org)
         models.Favorite.query.filter(models.Favorite.object==dashboard, models.Favorite.user==self.current_user).delete()
